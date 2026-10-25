@@ -47,4 +47,13 @@ Para publicar una preview desde Git:
 2. En Vercel, crea/importa el proyecto `bolsillo-wallet-dashboard` dentro del equipo **Alexis' projects** y selecciona el repositorio Walletbakers.
 3. Deja el Framework Preset en Next.js y despliega una preview.
 
-Por seguridad, no configures `WALLET_API_TOKEN` en Vercel mientras la app no tenga autenticación o la protección de despliegue activa. Sin esa protección, la ruta `/api/dashboard` permite consultar los datos que el token entregue. La preview actual debe usar datos de muestra.
+
+## Acceso privado en Vercel
+
+Configura estas variables en **Project Settings → Environment Variables** y selecciona **Production**:
+
+- DASHBOARD_PASSWORD: una contraseña larga y única que inventes.
+- AUTH_SECRET: una cadena aleatoria de al menos 32 caracteres.
+- WALLET_API_TOKEN: el token personal de Wallet.
+
+Guarda las variables y redespliega. Añade también el entorno Preview solo si quieres usarlo. No agregues el prefijo NEXT_PUBLIC_ a ninguna. La página y el endpoint de datos requieren una sesión válida; la cookie expira después de 12 horas.

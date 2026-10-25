@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWalletDashboard, WalletApiError } from '@/lib/wallet';
+import { hasValidSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
+  if (!await hasValidSession()) {
+    return NextResponse.json({ code: 'unauthorized', message: 'Inicia sesión para consultar tus finanzas.' }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+  }
   const period = request.nextUrl.searchParams.get('period') || undefined;
   const range = request.nextUrl.searchParams.get('range') === 'month' ? 'month' : 'week';
   try {

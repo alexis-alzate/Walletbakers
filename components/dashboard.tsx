@@ -31,7 +31,7 @@ export function Dashboard({initialData,initialConnection}:Props){
     try{
       const response=await fetch(`/api/dashboard?period=${encodeURIComponent(period)}&range=${nextRange}`,{cache:'no-store'});
       const result=await response.json();
-      if(!response.ok){
+      if(!response.ok){if(response.status===401){window.location.assign('/');return;}
         const code=(result.code||'wallet_api_error') as Connection;
         setConnection(code);
         if(!hasLiveData){setData(getDemoDashboard(period,nextRange));setSelectedPeriod(period);setRange(nextRange);}
@@ -48,7 +48,7 @@ export function Dashboard({initialData,initialConnection}:Props){
   return <div className="app-shell">
     <Sidebar open={menuOpen} onClose={()=>setMenuOpen(false)} connected={connected}/>
     <main className="main-content" id="overview">
-      <header className="topbar"><div className="topbar-left"><MobileMenu onClick={()=>setMenuOpen(true)}/><div className="breadcrumbs"><span>Mi espacio</span><span className="crumb-sep">/</span><b>Resumen</b></div></div><div className="topbar-actions"><div className={`connection-pill ${connected?'connected':''}`}><span className="status-dot"/>{connectionLabel(connection)}</div><button className="top-icon" aria-label="Buscar"><Search size={17}/></button><button className="top-icon notification-button" aria-label="Notificaciones"><Bell size={17}/><i/></button><button className="avatar-button" aria-label="Perfil de Zaeta">ZA</button></div></header>
+      <header className="topbar"><div className="topbar-left"><MobileMenu onClick={()=>setMenuOpen(true)}/><div className="breadcrumbs"><span>Mi espacio</span><span className="crumb-sep">/</span><b>Resumen</b></div></div><div className="topbar-actions"><div className={`connection-pill ${connected?'connected':''}`}><span className="status-dot"/>{connectionLabel(connection)}</div><button className="top-icon" aria-label="Buscar"><Search size={17}/></button><button className="top-icon notification-button" aria-label="Notificaciones"><Bell size={17}/><i/></button><button className="avatar-button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={async()=>{await fetch('/api/auth/logout',{method:'POST'});window.location.assign('/');}}>ZA</button></div></header>
       <div className="page-wrap">
         <section className="page-heading"><div><div className="eyebrow"><Sparkles size={13}/> TU RESUMEN FINANCIERO</div><h1>Tu dinero, <em>en perspectiva.</em></h1><p>Una mirada clara a lo que entra, lo que sale y lo que estás construyendo.</p></div><div className="heading-controls"><label className="period-select"><span className="sr-only">Periodo</span><span className="calendar-icon">▦</span><select value={selectedPeriod} onChange={(event)=>refresh(event.target.value)}>{periodOptions.map((period)=><option key={period} value={period}>{periodName(period)}</option>)}</select><ChevronDown size={15}/></label><button className="refresh-button" onClick={()=>refresh()} disabled={loading} aria-label="Actualizar datos"><RefreshCw size={15} className={loading?'spin':''}/><span>Actualizar</span></button></div></section>
         {!connected&&<div className={`notice ${connection==='missing_token'?'notice-info':'notice-warning'}`} role="status"><span className="notice-icon">{connection==='missing_token'?'i':'!'}</span><span><b>{connection==='missing_token'?'Viendo datos de muestra':connectionLabel(connection)}</b><small>{statusMessage(connection)}</small></span><button onClick={()=>refresh()} disabled={loading}>Reintentar</button></div>}
