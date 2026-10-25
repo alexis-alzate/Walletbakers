@@ -63,6 +63,10 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
     getRecords(dates.from,dates.to), walletGet<Page<WalletAccount>>('accounts',new URLSearchParams({limit:'200'})),
   ]);
   const currency = baseCurrency();
+  const currencyMismatchCount = records.filter((r) => {
+    const recordCurrency = typeof r.amount === 'object' && r.amount ? r.amount.currencyCode : currency;
+    return Boolean(recordCurrency && recordCurrency !== currency);
+  }).length;
   const included = records.filter((r) => {
     const recordCurrency = typeof r.amount === 'object' && r.amount ? r.amount.currencyCode : currency;
     return (recordCurrency || currency) === currency && r.recordType !== 'transfer';
@@ -106,11 +110,11 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
     const accountCurrency=a.currencyCode||(a.balance&&typeof a.balance==='object'?a.balance.currencyCode:undefined)||currency;
     return {id:a.id||`account-${index}`,name:nameOf(a,'Cuenta'),institution:a.institutionName||a.bankName||'Wallet',balance:valueOf(a.currentBalance??a.balance??a.amount),currency:accountCurrency};
   });
-  const recent=[...records].sort((a,b)=>(b.recordDate||'').localeCompare(a.recordDate||'')).slice(0,6).map((r,index)=>({
+  const recent=[...records].sort((a,b)=>(b.recordDate||'').localeCompare(a.recordDate||'')).map((r,index)=>({
     id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',amount:valueOf(r.amount),
     currency:typeof r.amount==='object'&&r.amount?.currencyCode?r.amount.currencyCode:currency,type:r.recordType||'expense',
   }));
-  return {month:dates.month,currency,totals:{income,expenses,balance:income-expenses,accounts:accounts.filter(a=>a.currency===currency).reduce((sum,a)=>sum+a.balance,0)},flow:[...buckets.values()],categories,categoryNames,recent,accounts,excludedCurrencyCount:records.length-included.length,syncedAt:new Date().toISOString()};
+  return {month:dates.month,currency,totals:{income,expenses,balance:income-expenses,accounts:accounts.filter(a=>a.currency===currency).reduce((sum,a)=>sum+a.balance,0)},flow:[...buckets.values()],categories,categoryNames,recent,accounts,excludedCurrencyCount:currencyMismatchCount,syncedAt:new Date().toISOString()};
 }
 
 
