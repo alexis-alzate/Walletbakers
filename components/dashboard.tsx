@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Check, ChevronDown, Clock3, Download, List, LogOut, RefreshCw, Search, ShieldCheck, Sparkles, TrendingUp, WalletCards } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, ArrowUpRight, Check, ChevronDown, Clock3, Download, List, LogOut, Maximize2, RefreshCw, Search, ShieldCheck, Sparkles, TrendingUp, WalletCards, X } from 'lucide-react';
 import { Sidebar, MobileMenu } from '@/components/sidebar';
 import { CashflowChart, CategoryFlowChart } from '@/components/finance-charts';
 import { AccountFlowChart } from '@/components/account-flow-chart';
@@ -10,6 +10,21 @@ import { getDemoDashboard } from '@/lib/demo';
 
 type Connection = 'connected'|'missing_token'|'invalid_token'|'initial_sync'|'wallet_api_error';
 type Props = { initialData: DashboardData; initialConnection: Connection };
+type ExpandedChartKind = 'cashflow'|'categories';
+
+function ExpandedChartModal({kind,data,range,onClose}:{kind:ExpandedChartKind;data:DashboardData;range:'week'|'month';onClose:()=>void}){
+  const dialogRef=useRef<HTMLElement>(null);
+  const title=kind==='cashflow'?'Ingresos y gastos':'Gastos por categoría';
+  useEffect(()=>{
+    const previousOverflow=document.body.style.overflow;
+    const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+    document.body.style.overflow='hidden';dialogRef.current?.focus();
+    const handleKey=(event:KeyboardEvent)=>{if(event.key==='Escape')onClose();};
+    window.addEventListener('keydown',handleKey);
+    return ()=>{document.body.style.overflow=previousOverflow;window.removeEventListener('keydown',handleKey);previousFocus?.focus();};
+  },[onClose]);
+  return <div className="chart-lightbox" onMouseDown={(event)=>{if(event.target===event.currentTarget)onClose();}}><section ref={dialogRef} className="chart-lightbox-dialog" role="dialog" aria-modal="true" aria-labelledby="expanded-chart-title" tabIndex={-1}><div className="chart-lightbox-heading"><div><span className="panel-kicker">GRÁFICA AMPLIADA · {periodName(data.month)}</span><h2 id="expanded-chart-title">{title}</h2><p>{kind==='cashflow'?'Compara cuánto dinero entra y cuánto sale':'Compara tus gastos por categoría y periodo'}</p></div><button className="chart-close-button" onClick={onClose} aria-label="Cerrar gráfica ampliada"><X size={19}/></button></div><div className="chart-lightbox-content">{kind==='cashflow'?<CashflowChart data={data} range={range}/>:<CategoryFlowChart data={data} range={range}/>}</div><div className="chart-lightbox-footer"><span>Datos de {data.currency}</span><span>Usa el cursor sobre las barras para ver los valores</span></div></section></div>;
+}
 const numberFormat = (currency:string) => new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:0});
 const periodOptions = Array.from({length:8},(_,index)=>{const date=new Date();date.setUTCDate(1);date.setUTCMonth(date.getUTCMonth()-index);return date.toISOString().slice(0,7)});
 function periodName(period:string){return new Intl.DateTimeFormat('es-CO',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(period+'-01T12:00:00Z'));}
@@ -30,6 +45,8 @@ export function Dashboard({initialData,initialConnection}:Props){
   const [activeSection,setActiveSection]=useState('overview');
   const [selectedAccount,setSelectedAccount]=useState<{id:string;name:string}|null>(null);
   const [selectedCategory,setSelectedCategory]=useState<string|null>(null);
+  const [expandedChart,setExpandedChart]=useState<ExpandedChartKind|null>(null);
+  const closeExpandedChart=useCallback(()=>setExpandedChart(null),[]);
   const connected=connection==='connected';
   const format=numberFormat(data.currency);
   const categoriesTotal=data.categories.reduce((sum,category)=>sum+category.value,0);
@@ -121,14 +138,14 @@ export function Dashboard({initialData,initialConnection}:Props){
         </section>
         <section className="chart-grid">
           <article className="panel cashflow-panel" id="cashflow">
-            <div className="panel-heading"><div><span className="panel-kicker">TENDENCIA</span><h2>Así se mueve tu dinero</h2><p>Ingresos y gastos {range==='week'?'en los últimos 7 días':'a lo largo del mes'}</p></div>
-              <div className="chart-actions"><div className="segmented-control"><button className={range==='week'?'active':''} onClick={()=>refresh(selectedPeriod,'week')}>Semana</button><button className={range==='month'?'active':''} onClick={()=>refresh(selectedPeriod,'month')}>Mes</button></div></div>
+            <div className="panel-heading"><div><span className="panel-kicker">TENDENCIA</span><h2>Ingresos y gastos</h2><p>Ingresos y gastos {range==='week'?'en los últimos 7 días':'a lo largo del mes'}</p></div>
+              <div className="chart-actions"><button className="chart-expand-button" onClick={()=>setExpandedChart('cashflow')} aria-label="Ampliar gráfica de flujo de caja" title="Ampliar gráfica"><Maximize2 size={15}/><span>Ampliar</span></button><div className="segmented-control"><button className={range==='week'?'active':''} onClick={()=>refresh(selectedPeriod,'week')}>Semana</button><button className={range==='month'?'active':''} onClick={()=>refresh(selectedPeriod,'month')}>Mes</button></div></div>
             </div>
             <CashflowChart data={data} range={range}/>
             <div className="panel-bottom"><span><i className="legend-dot green-dot"/> {connected?'Datos de Wallet':'Ejemplo visual'} <b>{data.currency}</b></span><span className="bottom-meta"><Clock3 size={12}/> {connected?'Consulta '+formatTime(data.syncedAt):'Vista previa'}</span></div>
           </article>
           <article className="panel category-panel" id="categories">
-            <div className="panel-heading"><div><span className="panel-kicker">A DÓNDE VA</span><h2>En qué se reparte</h2><p>Gastos por categoría · {periodName(data.month)}</p></div></div>
+            <div className="panel-heading"><div><span className="panel-kicker">A DÓNDE VA</span><h2>Gastos por categoría</h2><p>Cuánto gastaste en cada categoría · {periodName(data.month)}</p></div><button className="chart-expand-button" onClick={()=>setExpandedChart('categories')} aria-label="Ampliar gráfica de gastos por categoría" title="Ampliar gráfica"><Maximize2 size={15}/><span>Ampliar</span></button></div>
             <div className="category-total"><strong>{format.format(data.totals.expenses)}</strong><span>total de gastos</span><span className="category-period">{data.currency}</span></div>
             <CategoryFlowChart data={data} range={range}/>
             <div className="category-legend">{data.categories.slice(0,4).map((category)=><span key={category.name}><i style={{background:category.color}}/>{category.name}</span>)}</div>
@@ -155,5 +172,6 @@ export function Dashboard({initialData,initialConnection}:Props){
         <footer className="app-footer"><span>Hecho para ver lo importante. <Sparkles size={12}/></span><span>{connected?'Conectado con Wallet by BudgetBakers':'Bolsillo · datos de demostración'}</span></footer>
       </div>
     </main>
+    {expandedChart&&<ExpandedChartModal kind={expandedChart} data={data} range={range} onClose={closeExpandedChart}/>}
   </div>;
 }
