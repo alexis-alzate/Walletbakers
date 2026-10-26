@@ -37,7 +37,7 @@ function ChartMovementDetails({data,selection,onClear}:{data:DashboardData;selec
     window.addEventListener('keydown',closeOnEscape,true);
     return ()=>window.removeEventListener('keydown',closeOnEscape,true);
   },[activeMovement]);
-  const records=data.recent.filter((item)=>item.date.slice(0,10)===selection.date&&item.currency===data.currency&&!item.isTransfer&&(selection.kind==='income'?item.amount>0:item.amount<0)&&(!selection.category||item.category===selection.category));
+  const records=data.recent.filter((item)=>(item.localDate||walletDateKey(item.date))===selection.date&&item.currency===data.currency&&!item.isTransfer&&(selection.kind==='income'?item.amount>0:item.amount<0)&&(!selection.category||item.category===selection.category));
   const title=selection.kind==='income'?'Ingresos':'Gastos';
   const total=records.reduce((sum,item)=>sum+Math.abs(item.amount),0);
   return <section className="chart-movement-details" aria-label={`Movimientos del día ${formatDate(selection.date)}`}>
@@ -69,8 +69,9 @@ function movementTypeLabel(type:string,amount:number){
   return amount>=0?'Ingreso':'Gasto';
 }
 const numberFormat = (currency:string) => new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:0});
-function formatDateRange(from:string,to:string){const format=(date:string)=>new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(date+'T12:00:00Z'));return format(from)+' – '+format(to);}
-function formatDate(date:string){if(!date)return 'Sin fecha';return new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(date));}
+function walletDateKey(date:string){if(!date)return '';if(/^\d{4}-\d{2}-\d{2}$/.test(date))return date;const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bogota',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(date));const part=(type:Intl.DateTimeFormatPartTypes)=>parts.find((item)=>item.type===type)?.value||'';return part('year')+'-'+part('month')+'-'+part('day');}
+function formatDateRange(from:string,to:string){const format=(date:string)=>new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',year:'numeric',timeZone:'America/Bogota'}).format(new Date(date+'T12:00:00Z'));return format(from)+' - '+format(to);}
+function formatDate(date:string){if(!date)return 'Sin fecha';const value=/^\d{4}-\d{2}-\d{2}$/.test(date)?new Date(date+'T12:00:00Z'):new Date(date);return new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',year:'numeric',timeZone:'America/Bogota'}).format(value);}
 function formatTime(date:string){return new Intl.DateTimeFormat('es-CO',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bogota'}).format(new Date(date));}
 function connectionLabel(status:Connection){return status==='connected'?'Wallet conectado':status==='missing_token'?'Token pendiente':status==='invalid_token'?'Token inválido':status==='initial_sync'?'Sincronización inicial':'Revisar conexión';}
 function statusMessage(status:Connection){return status==='missing_token'?'Añade WALLET_API_TOKEN en las variables del servidor.':status==='invalid_token'?'Wallet rechazó el token. Revisa la variable WALLET_API_TOKEN en Vercel.':status==='initial_sync'?'Wallet está sincronizando la primera conexión. Espera un momento y actualiza.':status==='wallet_api_error'?'Wallet no respondió a la consulta. Conservamos los últimos datos visibles.':'';}
@@ -101,7 +102,7 @@ export function Dashboard({initialData,initialConnection}:Props){
     const search=query.trim().toLocaleLowerCase('es-CO');
     return data.recent.filter((item)=>{
       const matchesSearch=!search||[item.name,item.category,item.type,item.date,item.accountName].join(' ').toLocaleLowerCase('es-CO').includes(search);
-      const matchesChartBar=!selectedChartBar||(item.date.slice(0,10)===selectedChartBar.date&&item.currency===data.currency&&!item.isTransfer&&(selectedChartBar.kind==='income'?item.amount>0:item.amount<0)&&(!selectedChartBar.category||item.category===selectedChartBar.category));
+      const matchesChartBar=!selectedChartBar||((item.localDate||walletDateKey(item.date))===selectedChartBar.date&&item.currency===data.currency&&!item.isTransfer&&(selectedChartBar.kind==='income'?item.amount>0:item.amount<0)&&(!selectedChartBar.category||item.category===selectedChartBar.category));
       return matchesSearch&&matchesChartBar&&(!selectedAccount||item.accountId===selectedAccount.id)&&(!selectedCategory||item.category===selectedCategory);
     });
   },[data.recent,query,selectedAccount,selectedCategory,selectedChartBar]);

@@ -7,7 +7,7 @@ export type DashboardData = {
   flow: FlowPoint[];
   categories: { name: string; value: number; color: string }[];
   categoryNames: string[];
-  recent: { id: string; name: string; description?: string; category: string; date: string; amount: number; currency: string; type: string; accountId: string; accountName: string; isTransfer: boolean }[];
+  recent: { id: string; name: string; description?: string; category: string; date: string; localDate?: string; amount: number; currency: string; type: string; accountId: string; accountName: string; isTransfer: boolean }[];
   accounts: { id: string; name: string; institution: string; balance: number; currency: string }[];
   excludedCurrencyCount: number; syncedAt: string; accountFlows: { fromId: string; fromName: string; toId: string; toName: string; value: number; count: number; currency: string }[];
 };
@@ -18,6 +18,13 @@ type WalletAccount = { id?: string; name?: string; customName?: string; institut
 type Page<T> = { records?: T[]; accounts?: T[]; nextOffset?: number | null };
 const COLORS = ['#75c900','#3b82f6','#f5a623','#e23d35','#a855f7'];
 const baseCurrency = () => process.env.WALLET_BASE_CURRENCY || 'COP';
+const WALLET_TIME_ZONE = 'America/Bogota';
+function walletDateKey(value:string|Date){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:WALLET_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(typeof value==='string'?new Date(value):value);
+  const part=(type:Intl.DateTimeFormatPartTypes)=>parts.find((item)=>item.type===type)?.value||'';
+  return part('year')+'-'+part('month')+'-'+part('day');
+}
+function walletDayStartUtc(date:string){return new Date(Date.parse(date+'T00:00:00Z')+5*60*60*1000).toISOString();}
 
 export class WalletApiError extends Error {
   constructor(message: string, public status: number, public code: string) { super(message); this.name = 'WalletApiError'; }
@@ -41,18 +48,18 @@ async function walletGet<T>(path: string, params: URLSearchParams): Promise<T> {
   return body as T;
 }
 function periodDates(period?: string, fromDate?: string, toDate?: string) {
-  const requestedMonth = period && /^\d{4}-(0[1-9]|1[0-2])$/.test(period) ? period : new Date().toISOString().slice(0,7);
+  const requestedMonth = period && /^\d{4}-(0[1-9]|1[0-2])$/.test(period) ? period : walletDateKey(new Date()).slice(0,7);
   const [year, monthNumber] = requestedMonth.split('-').map(Number);
   const monthStart = requestedMonth + '-01';
   const monthEnd = new Date(Date.UTC(year,monthNumber,0)).toISOString().slice(0,10);
-  const today = new Date().toISOString().slice(0,10);
+  const today = walletDateKey(new Date());
   const defaultEnd = requestedMonth === today.slice(0,7) ? today : monthEnd;
   const validDate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')) && new Date(value + 'T00:00:00Z').toISOString().slice(0,10) === value);
   const from = validDate(fromDate) ? fromDate! : monthStart;
   const to = validDate(toDate) ? toDate! : defaultEnd;
   if (from > to) throw new WalletApiError('La fecha Desde debe ser anterior o igual a la fecha Hasta.',400,'invalid_date_range');
-  const toExclusive = new Date(Date.parse(to + 'T00:00:00Z') + 86400000).toISOString().slice(0,10);
-  return { month: from.slice(0,7), from, to, toExclusive };
+  const toExclusiveDate = new Date(Date.parse(to + 'T00:00:00Z') + 86400000).toISOString().slice(0,10);
+  return { month: from.slice(0,7), from, to, fromUtc:walletDayStartUtc(from), toExclusiveUtc:walletDayStartUtc(toExclusiveDate) };
 }
 async function getRecords(from: string, to: string) {
   const rows: WalletRecord[] = []; let offset: number | undefined = 0;
@@ -70,7 +77,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   void range;
   const dates = periodDates(period,fromDate,toDate);
   const [records, accountPage] = await Promise.all([
-    getRecords(dates.from,dates.toExclusive), walletGet<Page<WalletAccount>>('accounts',new URLSearchParams({limit:'200'})),
+    getRecords(dates.fromUtc,dates.toExclusiveUtc), walletGet<Page<WalletAccount>>('accounts',new URLSearchParams({limit:'200'})),
   ]);
   const currency = baseCurrency();
   const currencyMismatchCount = records.filter((r) => {
@@ -105,7 +112,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   for(const category of categoryNames) for(const bucket of buckets.values()) bucket[category]=0;
   for(const record of included){
     if(!record.recordDate) continue;
-    const date=record.recordDate.slice(0,10), key=date;
+    const date=walletDateKey(record.recordDate), key=date;
     const bucket=buckets.get(key); if(!bucket) continue;
     const amount=valueOf(record.amount), type=record.recordType?.toLowerCase();
     if(type==='income'||(type!=='expense'&&amount>0)) bucket.income+=Math.abs(amount);
@@ -138,7 +145,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   }
   const accountFlows = [...flowSums.values()].sort((a, b) => b.value - a.value);
   const recent=[...records].sort((a,b)=>(b.recordDate||'').localeCompare(a.recordDate||'')).map((r,index)=>({
-    id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',description:r.note?.trim()||'',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',amount:valueOf(r.amount),
+    id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',description:r.note?.trim()||'',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',localDate:r.recordDate?walletDateKey(r.recordDate):'',amount:valueOf(r.amount),
     currency:typeof r.amount==='object'&&r.amount?.currencyCode?r.amount.currencyCode:currency,type:r.recordType||'expense',
     accountId:r.accountId||'',accountName:r.accountName||accountById.get(r.accountId||'')?.name||'Cuenta no identificada',isTransfer:Boolean(r.transfer?.transferId),
   }));
