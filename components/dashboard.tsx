@@ -37,7 +37,7 @@ function ChartMovementDetails({data,selection,onClear}:{data:DashboardData;selec
     window.addEventListener('keydown',closeOnEscape,true);
     return ()=>window.removeEventListener('keydown',closeOnEscape,true);
   },[activeMovement]);
-  const records=data.recent.filter((item)=>(item.localDate||walletDateKey(item.date))===selection.date&&item.currency===data.currency&&!item.isTransfer&&(selection.kind==='income'?item.amount>0:item.amount<0)&&(!selection.category||item.category===selection.category));
+  const records=data.recent.filter((item)=>(item.reportDate||item.date.slice(0,10))===selection.date&&item.currency===data.currency&&!item.isTransfer&&(selection.kind==='income'?item.amount>0:item.amount<0)&&(!selection.category||item.category===selection.category));
   const title=selection.kind==='income'?'Ingresos':'Gastos';
   const total=records.reduce((sum,item)=>sum+Math.abs(item.amount),0);
   return <section className="chart-movement-details" aria-label={`Movimientos del día ${formatDate(selection.date)}`}>
@@ -102,7 +102,7 @@ export function Dashboard({initialData,initialConnection}:Props){
     const search=query.trim().toLocaleLowerCase('es-CO');
     return data.recent.filter((item)=>{
       const matchesSearch=!search||[item.name,item.category,item.type,item.date,item.accountName].join(' ').toLocaleLowerCase('es-CO').includes(search);
-      const matchesChartBar=!selectedChartBar||((item.localDate||walletDateKey(item.date))===selectedChartBar.date&&item.currency===data.currency&&!item.isTransfer&&(selectedChartBar.kind==='income'?item.amount>0:item.amount<0)&&(!selectedChartBar.category||item.category===selectedChartBar.category));
+      const matchesChartBar=!selectedChartBar||((item.reportDate||item.date.slice(0,10))===selectedChartBar.date&&item.currency===data.currency&&!item.isTransfer&&(selectedChartBar.kind==='income'?item.amount>0:item.amount<0)&&(!selectedChartBar.category||item.category===selectedChartBar.category));
       return matchesSearch&&matchesChartBar&&(!selectedAccount||item.accountId===selectedAccount.id)&&(!selectedCategory||item.category===selectedCategory);
     });
   },[data.recent,query,selectedAccount,selectedCategory,selectedChartBar]);

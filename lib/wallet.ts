@@ -7,7 +7,7 @@ export type DashboardData = {
   flow: FlowPoint[];
   categories: { name: string; value: number; color: string }[];
   categoryNames: string[];
-  recent: { id: string; name: string; description?: string; category: string; date: string; localDate?: string; amount: number; currency: string; type: string; accountId: string; accountName: string; isTransfer: boolean }[];
+  recent: { id: string; name: string; description?: string; category: string; date: string; reportDate?: string; localDate?: string; amount: number; currency: string; type: string; accountId: string; accountName: string; isTransfer: boolean }[];
   accounts: { id: string; name: string; institution: string; balance: number; currency: string }[];
   excludedCurrencyCount: number; syncedAt: string; accountFlows: { fromId: string; fromName: string; toId: string; toName: string; value: number; count: number; currency: string }[];
 };
@@ -24,7 +24,6 @@ function walletDateKey(value:string|Date){
   const part=(type:Intl.DateTimeFormatPartTypes)=>parts.find((item)=>item.type===type)?.value||'';
   return part('year')+'-'+part('month')+'-'+part('day');
 }
-function walletDayStartUtc(date:string){return new Date(Date.parse(date+'T00:00:00Z')+5*60*60*1000).toISOString();}
 
 export class WalletApiError extends Error {
   constructor(message: string, public status: number, public code: string) { super(message); this.name = 'WalletApiError'; }
@@ -58,8 +57,8 @@ function periodDates(period?: string, fromDate?: string, toDate?: string) {
   const from = validDate(fromDate) ? fromDate! : monthStart;
   const to = validDate(toDate) ? toDate! : defaultEnd;
   if (from > to) throw new WalletApiError('La fecha Desde debe ser anterior o igual a la fecha Hasta.',400,'invalid_date_range');
-  const toExclusiveDate = new Date(Date.parse(to + 'T00:00:00Z') + 86400000).toISOString().slice(0,10);
-  return { month: from.slice(0,7), from, to, fromUtc:walletDayStartUtc(from), toExclusiveUtc:walletDayStartUtc(toExclusiveDate) };
+  const toExclusive = new Date(Date.parse(to + 'T00:00:00Z') + 86400000).toISOString().slice(0,10);
+  return { month: from.slice(0,7), from, to, toExclusive };
 }
 async function getRecords(from: string, to: string) {
   const rows: WalletRecord[] = []; let offset: number | undefined = 0;
@@ -77,7 +76,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   void range;
   const dates = periodDates(period,fromDate,toDate);
   const [records, accountPage] = await Promise.all([
-    getRecords(dates.fromUtc,dates.toExclusiveUtc), walletGet<Page<WalletAccount>>('accounts',new URLSearchParams({limit:'200'})),
+    getRecords(dates.from,dates.toExclusive), walletGet<Page<WalletAccount>>('accounts',new URLSearchParams({limit:'200'})),
   ]);
   const currency = baseCurrency();
   const currencyMismatchCount = records.filter((r) => {
@@ -112,7 +111,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   for(const category of categoryNames) for(const bucket of buckets.values()) bucket[category]=0;
   for(const record of included){
     if(!record.recordDate) continue;
-    const date=walletDateKey(record.recordDate), key=date;
+    const date=record.recordDate.slice(0,10), key=date;
     const bucket=buckets.get(key); if(!bucket) continue;
     const amount=valueOf(record.amount), type=record.recordType?.toLowerCase();
     if(type==='income'||(type!=='expense'&&amount>0)) bucket.income+=Math.abs(amount);
@@ -145,7 +144,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   }
   const accountFlows = [...flowSums.values()].sort((a, b) => b.value - a.value);
   const recent=[...records].sort((a,b)=>(b.recordDate||'').localeCompare(a.recordDate||'')).map((r,index)=>({
-    id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',description:r.note?.trim()||'',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',localDate:r.recordDate?walletDateKey(r.recordDate):'',amount:valueOf(r.amount),
+    id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',description:r.note?.trim()||'',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',reportDate:r.recordDate?.slice(0,10)||'',localDate:r.recordDate?walletDateKey(r.recordDate):'',amount:valueOf(r.amount),
     currency:typeof r.amount==='object'&&r.amount?.currencyCode?r.amount.currencyCode:currency,type:r.recordType||'expense',
     accountId:r.accountId||'',accountName:r.accountName||accountById.get(r.accountId||'')?.name||'Cuenta no identificada',isTransfer:Boolean(r.transfer?.transferId),
   }));
