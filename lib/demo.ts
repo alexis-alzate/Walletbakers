@@ -22,14 +22,14 @@ export function getDemoDashboard(month = '2026-10', range: 'week' | 'month' = 'w
     return point;
   });
   const recent: DashboardData['recent'] = [
-    {id:'m1',name:'Arriendo',category:'Hogar',date:`${month}-25T08:00:00Z`,amount:-1200000,currency:'COP',type:'expense'},
-    {id:'m2',name:'Pago de nómina',category:'Ingresos',date:`${month}-24T12:00:00Z`,amount:5800000,currency:'COP',type:'income'},
-    {id:'m3',name:'Mercado local',category:'Alimentación',date:`${month}-24T09:00:00Z`,amount:-186400,currency:'COP',type:'expense'},
-    {id:'m4',name:'Café con Laura',category:'Ocio',date:`${month}-23T15:00:00Z`,amount:-32000,currency:'COP',type:'expense'},
+    {id:'m1',name:'Arriendo',category:'Hogar',date:`${month}-25T08:00:00Z`,amount:-1200000,currency:'COP',type:'expense',accountId:'a1',accountName:'Cuenta principal'},
+    {id:'m2',name:'Pago de nómina',category:'Ingresos',date:`${month}-24T12:00:00Z`,amount:5800000,currency:'COP',type:'income',accountId:'a1',accountName:'Cuenta principal'},
+    {id:'m3',name:'Mercado local',category:'Alimentación',date:`${month}-24T09:00:00Z`,amount:-186400,currency:'COP',type:'expense',accountId:'a2',accountName:'Ahorros'},
+    {id:'m4',name:'Café con Laura',category:'Ocio',date:`${month}-23T15:00:00Z`,amount:-32000,currency:'COP',type:'expense',accountId:'a3',accountName:'Efectivo'},
   ];
   return {
     month,currency:'COP',totals:{income:6250000,expenses:3405000,balance:2845000,accounts:12640500},flow,
-    categories,categoryNames:names,recent,
+    categories,categoryNames:names,recent,accountFlows:[{fromId:'a1',fromName:'Cuenta principal',toId:'a2',toName:'Ahorros',value:650000,count:3,currency:'COP'},{fromId:'a2',fromName:'Ahorros',toId:'a3',toName:'Efectivo',value:120000,count:1,currency:'COP'}],
     accounts:[
       {id:'a1',name:'Cuenta principal',institution:'Bancolombia',balance:8250000,currency:'COP'},
       {id:'a2',name:'Ahorros',institution:'Nu',balance:3840500,currency:'COP'},

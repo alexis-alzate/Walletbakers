@@ -7,13 +7,13 @@ export type DashboardData = {
   flow: FlowPoint[];
   categories: { name: string; value: number; color: string }[];
   categoryNames: string[];
-  recent: { id: string; name: string; category: string; date: string; amount: number; currency: string; type: string }[];
+  recent: { id: string; name: string; category: string; date: string; amount: number; currency: string; type: string; accountId: string; accountName: string }[];
   accounts: { id: string; name: string; institution: string; balance: number; currency: string }[];
-  excludedCurrencyCount: number; syncedAt: string;
+  excludedCurrencyCount: number; syncedAt: string; accountFlows: { fromId: string; fromName: string; toId: string; toName: string; value: number; count: number; currency: string }[];
 };
-type Amount = { value?: number | string; currencyCode?: string } | number | string | null;
+type Amount = { value?: number | string; currentBalance?: number | string; rawCurrentBalance?: number | string; currencyCode?: string } | number | string | null;
 type Named = { name?: string; customName?: string } | string | null;
-type WalletRecord = { id?: string; recordDate?: string; counterParty?: string; amount?: Amount; recordType?: string; category?: Named };
+type WalletRecord = { id?: string; recordDate?: string; counterParty?: string; accountName?: string; amount?: Amount; recordType?: string; category?: Named; accountId?: string; transfer?: { type?: string; transferId?: string; mirrorRecord?: { id?: string; accountId?: string; amount?: Amount } | null } | null };
 type WalletAccount = { id?: string; name?: string; customName?: string; institutionName?: string; bankName?: string; currencyCode?: string; currentBalance?: Amount; balance?: Amount; amount?: Amount };
 type Page<T> = { records?: T[]; accounts?: T[]; nextOffset?: number | null };
 const COLORS = ['#75c900','#3b82f6','#f5a623','#e23d35','#a855f7'];
@@ -23,7 +23,7 @@ export class WalletApiError extends Error {
   constructor(message: string, public status: number, public code: string) { super(message); this.name = 'WalletApiError'; }
 }
 function valueOf(amount: Amount | undefined): number {
-  const raw = typeof amount === 'object' && amount !== null ? amount.value : amount;
+  const raw = typeof amount === 'object' && amount !== null ? amount.value ?? amount.currentBalance ?? amount.rawCurrentBalance : amount;
   const value = Number(raw ?? 0); return Number.isFinite(value) ? value : 0;
 }
 function nameOf(value: Named | undefined, fallback: string): string {
@@ -69,7 +69,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   }).length;
   const included = records.filter((r) => {
     const recordCurrency = typeof r.amount === 'object' && r.amount ? r.amount.currencyCode : currency;
-    return (recordCurrency || currency) === currency && r.recordType !== 'transfer';
+    return (recordCurrency || currency) === currency && !r.transfer?.transferId;
   });
   let income = 0, expenses = 0;
   const categorySums = new Map<string,number>();
@@ -110,11 +110,34 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
     const accountCurrency=a.currencyCode||(a.balance&&typeof a.balance==='object'?a.balance.currencyCode:undefined)||currency;
     return {id:a.id||`account-${index}`,name:nameOf(a,'Cuenta'),institution:a.institutionName||a.bankName||'Wallet',balance:valueOf(a.currentBalance??a.balance??a.amount),currency:accountCurrency};
   });
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
+  const flowSums = new Map<string, DashboardData['accountFlows'][number]>();
+  const seenTransferIds = new Set<string>();
+  for (const record of records) {
+    const transferId = record.transfer?.transferId;
+    const mirror = record.transfer?.mirrorRecord;
+    const accountId = record.accountId;
+    if (!transferId || !accountId || !mirror?.accountId || seenTransferIds.has(transferId)) continue;
+    const recordAmount = valueOf(record.amount);
+    const fromId = recordAmount < 0 ? accountId : mirror.accountId;
+    const toId = recordAmount < 0 ? mirror.accountId : accountId;
+    if (fromId === toId) continue;
+    seenTransferIds.add(transferId);
+    const from = accountById.get(fromId), to = accountById.get(toId);
+    if (!from || !to) continue;
+    const recordCurrency = typeof record.amount === 'object' && record.amount?.currencyCode ? record.amount.currencyCode : from.currency;
+    const key = fromId + ':' + toId + ':' + recordCurrency;
+    const existing = flowSums.get(key);
+    if (existing) { existing.value += Math.abs(recordAmount); existing.count += 1; }
+    else flowSums.set(key, { fromId, fromName: from.name, toId, toName: to.name, value: Math.abs(recordAmount), count: 1, currency: recordCurrency });
+  }
+  const accountFlows = [...flowSums.values()].sort((a, b) => b.value - a.value);
   const recent=[...records].sort((a,b)=>(b.recordDate||'').localeCompare(a.recordDate||'')).map((r,index)=>({
     id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',amount:valueOf(r.amount),
     currency:typeof r.amount==='object'&&r.amount?.currencyCode?r.amount.currencyCode:currency,type:r.recordType||'expense',
+    accountId:r.accountId||'',accountName:r.accountName||accountById.get(r.accountId||'')?.name||'Cuenta no identificada',
   }));
-  return {month:dates.month,currency,totals:{income,expenses,balance:income-expenses,accounts:accounts.filter(a=>a.currency===currency).reduce((sum,a)=>sum+a.balance,0)},flow:[...buckets.values()],categories,categoryNames,recent,accounts,excludedCurrencyCount:currencyMismatchCount,syncedAt:new Date().toISOString()};
+  return {month:dates.month,currency,totals:{income,expenses,balance:income-expenses,accounts:accounts.filter(a=>a.currency===currency).reduce((sum,a)=>sum+a.balance,0)},flow:[...buckets.values()],categories,categoryNames,recent,accounts,accountFlows,excludedCurrencyCount:currencyMismatchCount,syncedAt:new Date().toISOString()};
 }
 
 

@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, Clock3, Download, List, LogOut, RefreshCw, Search, ShieldCheck, Sparkles, TrendingUp, WalletCards } from 'lucide-react';
 import { Sidebar, MobileMenu } from '@/components/sidebar';
 import { CashflowChart, CategoryFlowChart } from '@/components/finance-charts';
+import { AccountFlowChart } from '@/components/account-flow-chart';
 import type { DashboardData } from '@/lib/wallet';
 import { getDemoDashboard } from '@/lib/demo';
 
@@ -26,14 +27,36 @@ export function Dashboard({initialData,initialConnection}:Props){
   const [hasLiveData,setHasLiveData]=useState(initialConnection==='connected');
   const [menuOpen,setMenuOpen]=useState(false);
   const [query,setQuery]=useState('');
+  const [activeSection,setActiveSection]=useState('overview');
+  const [selectedAccount,setSelectedAccount]=useState<{id:string;name:string}|null>(null);
+  const [selectedCategory,setSelectedCategory]=useState<string|null>(null);
   const connected=connection==='connected';
   const format=numberFormat(data.currency);
   const categoriesTotal=data.categories.reduce((sum,category)=>sum+category.value,0);
   const visibleTransactions=useMemo(()=>{
     const search=query.trim().toLocaleLowerCase('es-CO');
-    if(!search)return data.recent;
-    return data.recent.filter((item)=>[item.name,item.category,item.type,item.date].join(' ').toLocaleLowerCase('es-CO').includes(search));
-  },[data.recent,query]);
+    return data.recent.filter((item)=>{
+      const matchesSearch=!search||[item.name,item.category,item.type,item.date,item.accountName].join(' ').toLocaleLowerCase('es-CO').includes(search);
+      return matchesSearch&&(!selectedAccount||item.accountId===selectedAccount.id)&&(!selectedCategory||item.category===selectedCategory);
+    });
+  },[data.recent,query,selectedAccount,selectedCategory]);
+
+  useEffect(()=>{
+    const sections=['cashflow','categories','account-flow','activity','accounts'].map((id)=>document.getElementById(id)).filter((node):node is HTMLElement=>Boolean(node));
+    const observer=new IntersectionObserver((entries)=>{
+      const current=entries.filter((entry)=>entry.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];
+      if(current)setActiveSection(current.target.id);
+    },{rootMargin:'-12% 0px -68% 0px',threshold:[0,.2,.5]});
+    sections.forEach((section)=>observer.observe(section));
+    return ()=>observer.disconnect();
+  },[]);
+
+  function filterByAccount(id:string,name:string){
+    setSelectedAccount({id,name});setSelectedCategory(null);document.getElementById('activity')?.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+  function filterByCategory(name:string){
+    setSelectedCategory((current)=>current===name?null:name);setSelectedAccount(null);document.getElementById('activity')?.scrollIntoView({behavior:'smooth',block:'start'});
+  }
 
   async function refresh(period=selectedPeriod,nextRange=range){
     setLoading(true);
@@ -72,7 +95,7 @@ export function Dashboard({initialData,initialConnection}:Props){
   }
 
   return <div className="app-shell">
-    <Sidebar open={menuOpen} onClose={()=>setMenuOpen(false)} connected={connected}/>
+    <Sidebar open={menuOpen} onClose={()=>setMenuOpen(false)} connected={connected} activeSection={activeSection} onNavigate={setActiveSection}/>
     <main className="main-content" id="overview">
       <header className="topbar">
         <div className="topbar-left"><MobileMenu onClick={()=>setMenuOpen(true)}/><div className="breadcrumbs"><span>Mi espacio</span><span className="crumb-sep">/</span><b>Resumen</b></div></div>
@@ -109,13 +132,14 @@ export function Dashboard({initialData,initialConnection}:Props){
             <div className="category-total"><strong>{format.format(data.totals.expenses)}</strong><span>total de gastos</span><span className="category-period">{data.currency}</span></div>
             <CategoryFlowChart data={data} range={range}/>
             <div className="category-legend">{data.categories.slice(0,4).map((category)=><span key={category.name}><i style={{background:category.color}}/>{category.name}</span>)}</div>
-            <div className="category-list">{data.categories.slice(0,5).map((category)=><div className="category-row" key={category.name}><span className="category-name"><i style={{background:category.color}}/>{category.name}</span><b>{format.format(category.value)}</b><small>{categoriesTotal?Math.round(category.value/categoriesTotal*100):0}%</small></div>)}</div>
+            <div className="category-list">{data.categories.slice(0,5).map((category)=><button className={"category-row category-filter "+(selectedCategory===category.name?"category-filter-active":"")} key={category.name} aria-pressed={selectedCategory===category.name} onClick={()=>filterByCategory(category.name)}><span className="category-name"><i style={{background:category.color}}/>{category.name}</span><b>{format.format(category.value)}</b><small>{categoriesTotal?Math.round(category.value/categoriesTotal*100):0}%</small></button>)}</div>
             <a className="panel-link" href="#activity">Ver movimientos <ArrowRight size={13}/></a>
           </article>
         </section>
+        <AccountFlowChart flows={data.accountFlows} currency={data.currency} onAccountSelect={filterByAccount}/>
         <section className="lower-grid">
           <article className="panel activity-panel" id="activity">
-            <div className="panel-heading"><div><span className="panel-kicker">ACTIVIDAD</span><h2>Movimientos del periodo</h2><p>{data.recent.length} movimientos cargados · {periodName(data.month)}</p></div>
+            <div className="panel-heading"><div><span className="panel-kicker">ACTIVIDAD</span><h2>Movimientos del periodo</h2><p>{visibleTransactions.length} de {data.recent.length} movimientos · {periodName(data.month)}</p>{(selectedAccount||selectedCategory)&&<button className="filter-chip" onClick={()=>{setSelectedAccount(null);setSelectedCategory(null);}}>Filtro: {selectedAccount?.name||selectedCategory} <span>×</span></button>}</div>
               <div className="activity-actions"><button className="csv-button" onClick={exportTransactions} disabled={!visibleTransactions.length}><Download size={14}/><span>Exportar CSV</span></button></div>
             </div>
             <label className="transaction-search"><Search size={14}/><input aria-label="Buscar movimientos" placeholder="Buscar por nombre, categoría o fecha" value={query} onChange={(event)=>setQuery(event.target.value)}/>{query&&<button type="button" aria-label="Limpiar búsqueda" onClick={()=>setQuery('')}>Limpiar</button>}</label>
@@ -124,7 +148,7 @@ export function Dashboard({initialData,initialConnection}:Props){
           <article className="panel accounts-panel" id="accounts">
             <div className="panel-heading"><div><span className="panel-kicker">TUS CUENTAS</span><h2>Todo en un vistazo</h2><p>{data.accounts.length} cuentas desde Wallet</p></div></div>
             <div className="available-balance"><span>Total disponible en {data.currency}</span><strong>{format.format(data.totals.accounts)}</strong></div>
-            <div className="accounts-list">{data.accounts.map((account,index)=><div className="account-row" key={account.id}><span className={'account-icon account-color-'+(index%4)}><WalletCards size={16}/></span><span className="account-details"><b>{account.name}</b><small>{account.institution} · {account.currency}</small></span><span className="account-balance">{numberFormat(account.currency).format(account.balance)}</span></div>)}</div>
+            <div className="accounts-list">{data.accounts.map((account,index)=><button className={"account-row account-row-button "+(selectedAccount?.id===account.id?"account-row-active":"")} key={account.id} onClick={()=>filterByAccount(account.id,account.name)} aria-pressed={selectedAccount?.id===account.id}><span className={'account-icon account-color-'+(index%4)}><WalletCards size={16}/></span><span className="account-details"><b>{account.name}</b><small>{account.institution} · {account.currency}</small></span><span className="account-balance">{numberFormat(account.currency).format(account.balance)}</span></button>)}</div>
             <div className="accounts-foot"><span><i className="legend-dot green-dot"/> {data.accounts.length} cuentas sincronizadas</span><span><ShieldCheck size={12}/> Solo lectura</span></div>
           </article>
         </section>
