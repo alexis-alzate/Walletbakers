@@ -39,9 +39,31 @@ function ChartMovementDetails({data,selection,onClear}:{data:DashboardData;selec
   return <section className="chart-movement-details" aria-label={`Movimientos del día ${formatDate(selection.date)}`}>
     <div className="chart-movement-heading"><div><span className="panel-kicker">DETALLE DEL DÍA</span><h3>{formatDate(selection.date)} · {selection.category||title}</h3><p>{records.length} movimientos · {numberFormat(data.currency).format(total)}</p></div><button className="chart-clear-selection" onClick={onClear}>Quitar selección</button></div>
     {records.length?<div className="chart-movement-list">{records.map((item)=><button className="chart-movement-row" key={item.id} onClick={()=>setActiveMovement(item)} aria-label={`Ver detalle de ${item.name}`}><span className={`chart-movement-dot ${item.amount>0?'income-dot':'expense-dot'}`}/><span className="chart-movement-info"><b>{item.name}</b><small>{formatTime(item.date)} · {item.category} · {item.accountName}</small></span><strong className={item.amount>0?'positive-amount':''}>{item.amount>0?'+':'−'} {numberFormat(item.currency).format(Math.abs(item.amount))}</strong><ArrowRight className="chart-movement-open" size={15}/></button>)}</div>:<div className="chart-movement-empty">No hay movimientos de {title.toLowerCase()} asociados a esta barra.</div>}
-    {activeMovement&&<div className="movement-card-backdrop" onMouseDown={(event)=>{if(event.target===event.currentTarget)setActiveMovement(null);}}><article className="movement-detail-card" role="dialog" aria-modal="true" aria-labelledby="movement-card-title"><div className="movement-card-topline"><span className={`movement-card-icon ${activeMovement.amount>=0?'movement-card-income':'movement-card-expense'}`}>{activeMovement.amount>=0?<ArrowUpRight size={23}/>:<ArrowRight size={23}/>}</span><button className="chart-close-button movement-card-close" onClick={()=>setActiveMovement(null)} aria-label="Cerrar detalle"><X size={18}/></button></div><span className="panel-kicker">DETALLE DEL MOVIMIENTO</span><h3 id="movement-card-title">{activeMovement.name}</h3><strong className={`movement-card-amount ${activeMovement.amount>=0?'positive-amount':''}`}>{activeMovement.amount>=0?'+':'−'} {numberFormat(activeMovement.currency).format(Math.abs(activeMovement.amount))}</strong><div className="movement-card-divider"/><dl className="movement-card-fields"><div><dt>Fecha y hora</dt><dd>{formatDate(activeMovement.date)} · {formatTime(activeMovement.date)}</dd></div><div><dt>Categoría</dt><dd>{activeMovement.category||'Sin categoría'}</dd></div><div><dt>Cuenta</dt><dd>{activeMovement.accountName||'Sin cuenta'}</dd></div><div><dt>Tipo</dt><dd>{activeMovement.type|| (activeMovement.amount>=0?'Ingreso':'Gasto')}</dd></div></dl></article></div>}  </section>;
+    {activeMovement&&<div className="movement-card-backdrop" onMouseDown={(event)=>{if(event.target===event.currentTarget)setActiveMovement(null);}}><article className="movement-detail-card" role="dialog" aria-modal="true" aria-labelledby="movement-card-title"><div className="movement-card-topline"><span className={`movement-card-icon ${activeMovement.amount>=0?'movement-card-income':'movement-card-expense'}`}>{activeMovement.amount>=0?<ArrowUpRight size={23}/>:<ArrowRight size={23}/>}</span><button className="chart-close-button movement-card-close" onClick={()=>setActiveMovement(null)} aria-label="Cerrar detalle"><X size={18}/></button></div><span className="panel-kicker">DETALLE DEL MOVIMIENTO</span><h3 id="movement-card-title">{movementTitle(activeMovement)}</h3><div className="movement-card-description"><span className="panel-kicker">¿QUÉ COMPRASTE?</span><p>{movementDescription(activeMovement)}</p></div><strong className={`movement-card-amount ${activeMovement.amount>=0?'positive-amount':''}`}>{activeMovement.amount>=0?'+':'−'} {numberFormat(activeMovement.currency).format(Math.abs(activeMovement.amount))}</strong><div className="movement-card-divider"/><dl className="movement-card-fields"><div><dt>Fecha y hora</dt><dd>{formatDate(activeMovement.date)} · {formatTime(activeMovement.date)}</dd></div><div><dt>Categoría</dt><dd>{translateWalletCategory(activeMovement.category)}</dd></div><div><dt>Cuenta</dt><dd>{activeMovement.accountName||'Sin cuenta'}</dd></div><div><dt>Tipo</dt><dd>{movementTypeLabel(activeMovement.type,activeMovement.amount)}</dd></div></dl></article></div>}  </section>;
 }
 
+function translateWalletCategory(category:string){
+  const translations:Record<string,string>={'electronics & accessories':'Electrónica y accesorios','food & drinks':'Comida y bebidas','home & utilities':'Hogar y servicios','groceries':'Mercado','transportation':'Transporte','shopping':'Compras','health & beauty':'Salud y cuidado personal','restaurants':'Restaurantes','subscriptions':'Suscripciones','books, audio, subscriptions':'Libros, audio y suscripciones','other':'Otros'};
+  return translations[category.trim().toLocaleLowerCase('en')]||category||'Sin categoría';
+}
+function movementTitle(item:DashboardData['recent'][number]){
+  const name=item.name.trim();
+  if(item.description)return item.description;
+  if(name&&name.toLocaleLowerCase('es')!=='movimiento')return name;
+  return translateWalletCategory(item.category);
+}
+function movementDescription(item:DashboardData['recent'][number]){
+  if(item.description)return item.description;
+  if(item.name&&item.name.toLocaleLowerCase('es')!=='movimiento')return item.name;
+  return 'Wallet no envió el detalle del artículo para este movimiento.';
+}
+function movementTypeLabel(type:string,amount:number){
+  const normalized=type.trim().toLocaleLowerCase('en');
+  if(normalized==='income'||normalized==='ingreso')return 'Ingreso';
+  if(normalized==='expense'||normalized==='gasto')return 'Gasto';
+  if(normalized==='transfer'||normalized==='transferencia')return 'Transferencia';
+  return amount>=0?'Ingreso':'Gasto';
+}
 const numberFormat = (currency:string) => new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:0});
 function formatDateRange(from:string,to:string){const format=(date:string)=>new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(date+'T12:00:00Z'));return format(from)+' – '+format(to);}
 function formatDate(date:string){if(!date)return 'Sin fecha';return new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(date));}

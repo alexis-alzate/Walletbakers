@@ -7,13 +7,13 @@ export type DashboardData = {
   flow: FlowPoint[];
   categories: { name: string; value: number; color: string }[];
   categoryNames: string[];
-  recent: { id: string; name: string; category: string; date: string; amount: number; currency: string; type: string; accountId: string; accountName: string; isTransfer: boolean }[];
+  recent: { id: string; name: string; description?: string; category: string; date: string; amount: number; currency: string; type: string; accountId: string; accountName: string; isTransfer: boolean }[];
   accounts: { id: string; name: string; institution: string; balance: number; currency: string }[];
   excludedCurrencyCount: number; syncedAt: string; accountFlows: { fromId: string; fromName: string; toId: string; toName: string; value: number; count: number; currency: string }[];
 };
 type Amount = { value?: number | string; currentBalance?: number | string; rawCurrentBalance?: number | string; currencyCode?: string } | number | string | null;
 type Named = { name?: string; customName?: string } | string | null;
-type WalletRecord = { id?: string; recordDate?: string; counterParty?: string; accountName?: string; amount?: Amount; recordType?: string; category?: Named; accountId?: string; transfer?: { type?: string; transferId?: string; mirrorRecord?: { id?: string; accountId?: string; amount?: Amount } | null } | null };
+type WalletRecord = { id?: string; recordDate?: string; counterParty?: string; note?: string; accountName?: string; amount?: Amount; recordType?: string; category?: Named; accountId?: string; transfer?: { type?: string; transferId?: string; mirrorRecord?: { id?: string; accountId?: string; amount?: Amount } | null } | null };
 type WalletAccount = { id?: string; name?: string; customName?: string; institutionName?: string; bankName?: string; currencyCode?: string; currentBalance?: Amount; balance?: Amount; amount?: Amount };
 type Page<T> = { records?: T[]; accounts?: T[]; nextOffset?: number | null };
 const COLORS = ['#75c900','#3b82f6','#f5a623','#e23d35','#a855f7'];
@@ -138,7 +138,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   }
   const accountFlows = [...flowSums.values()].sort((a, b) => b.value - a.value);
   const recent=[...records].sort((a,b)=>(b.recordDate||'').localeCompare(a.recordDate||'')).map((r,index)=>({
-    id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',amount:valueOf(r.amount),
+    id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',description:r.note?.trim()||'',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',amount:valueOf(r.amount),
     currency:typeof r.amount==='object'&&r.amount?.currencyCode?r.amount.currencyCode:currency,type:r.recordType||'expense',
     accountId:r.accountId||'',accountName:r.accountName||accountById.get(r.accountId||'')?.name||'Cuenta no identificada',isTransfer:Boolean(r.transfer?.transferId),
   }));
