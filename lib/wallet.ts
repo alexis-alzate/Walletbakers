@@ -57,8 +57,10 @@ function periodDates(period?: string, fromDate?: string, toDate?: string) {
   const from = validDate(fromDate) ? fromDate! : monthStart;
   const to = validDate(toDate) ? toDate! : defaultEnd;
   if (from > to) throw new WalletApiError('La fecha Desde debe ser anterior o igual a la fecha Hasta.',400,'invalid_date_range');
-  const toExclusive = new Date(Date.parse(to + 'T00:00:00Z') + 86400000).toISOString().slice(0,10);
-  return { month: from.slice(0,7), from, to, toExclusive };
+  // Wallet stores recordDate in UTC, but its reports group by the user's local calendar.
+  const queryFrom = new Date(Date.parse(from + 'T00:00:00Z') - 86400000).toISOString().slice(0,10);
+  const toExclusive = new Date(Date.parse(to + 'T00:00:00Z') + 2 * 86400000).toISOString().slice(0,10);
+  return { month: from.slice(0,7), from, to, queryFrom, toExclusive };
 }
 async function getRecords(from: string, to: string) {
   const rows: WalletRecord[] = []; let offset: number | undefined = 0;
@@ -76,14 +78,15 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   void range;
   const dates = periodDates(period,fromDate,toDate);
   const [records, accountPage] = await Promise.all([
-    getRecords(dates.from,dates.toExclusive), walletGet<Page<WalletAccount>>('accounts',new URLSearchParams({limit:'200'})),
+    getRecords(dates.queryFrom,dates.toExclusive), walletGet<Page<WalletAccount>>('accounts',new URLSearchParams({limit:'200'})),
   ]);
+  const periodRecords = records.filter((record) => record.recordDate && walletDateKey(record.recordDate) >= dates.from && walletDateKey(record.recordDate) <= dates.to);
   const currency = baseCurrency();
-  const currencyMismatchCount = records.filter((r) => {
+  const currencyMismatchCount = periodRecords.filter((r) => {
     const recordCurrency = typeof r.amount === 'object' && r.amount ? r.amount.currencyCode : currency;
     return Boolean(recordCurrency && recordCurrency !== currency);
   }).length;
-  const included = records.filter((r) => {
+  const included = periodRecords.filter((r) => {
     const recordCurrency = typeof r.amount === 'object' && r.amount ? r.amount.currencyCode : currency;
     return (recordCurrency || currency) === currency && !r.transfer?.transferId;
   });
@@ -111,7 +114,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   for(const category of categoryNames) for(const bucket of buckets.values()) bucket[category]=0;
   for(const record of included){
     if(!record.recordDate) continue;
-    const date=record.recordDate.slice(0,10), key=date;
+    const date=walletDateKey(record.recordDate), key=date;
     const bucket=buckets.get(key); if(!bucket) continue;
     const amount=valueOf(record.amount), type=record.recordType?.toLowerCase();
     if(type==='income'||(type!=='expense'&&amount>0)) bucket.income+=Math.abs(amount);
@@ -124,7 +127,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   const accountById = new Map(accounts.map((account) => [account.id, account]));
   const flowSums = new Map<string, DashboardData['accountFlows'][number]>();
   const seenTransferIds = new Set<string>();
-  for (const record of records) {
+  for (const record of periodRecords) {
     const transferId = record.transfer?.transferId;
     const mirror = record.transfer?.mirrorRecord;
     const accountId = record.accountId;
@@ -143,8 +146,8 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
     else flowSums.set(key, { fromId, fromName: from.name, toId, toName: to.name, value: Math.abs(recordAmount), count: 1, currency: recordCurrency });
   }
   const accountFlows = [...flowSums.values()].sort((a, b) => b.value - a.value);
-  const recent=[...records].sort((a,b)=>(b.recordDate||'').localeCompare(a.recordDate||'')).map((r,index)=>({
-    id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',description:r.note?.trim()||'',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',reportDate:r.recordDate?.slice(0,10)||'',localDate:r.recordDate?walletDateKey(r.recordDate):'',amount:valueOf(r.amount),
+  const recent=[...periodRecords].sort((a,b)=>(b.recordDate||'').localeCompare(a.recordDate||'')).map((r,index)=>({
+    id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',description:r.note?.trim()||'',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',reportDate:r.recordDate?walletDateKey(r.recordDate):'',localDate:r.recordDate?walletDateKey(r.recordDate):'',amount:valueOf(r.amount),
     currency:typeof r.amount==='object'&&r.amount?.currencyCode?r.amount.currencyCode:currency,type:r.recordType||'expense',
     accountId:r.accountId||'',accountName:r.accountName||accountById.get(r.accountId||'')?.name||'Cuenta no identificada',isTransfer:Boolean(r.transfer?.transferId),
   }));
