@@ -1,13 +1,13 @@
 import 'server-only';
 
-export type FlowPoint = { label: string; income: number; expenses: number; [key: string]: number | string };
+export type FlowPoint = { date: string; label: string; income: number; expenses: number; [key: string]: number | string };
 export type DashboardData = {
   month: string; dateFrom: string; dateTo: string; currency: string;
   totals: { income: number; expenses: number; balance: number; accounts: number };
   flow: FlowPoint[];
   categories: { name: string; value: number; color: string }[];
   categoryNames: string[];
-  recent: { id: string; name: string; category: string; date: string; amount: number; currency: string; type: string; accountId: string; accountName: string }[];
+  recent: { id: string; name: string; category: string; date: string; amount: number; currency: string; type: string; accountId: string; accountName: string; isTransfer: boolean }[];
   accounts: { id: string; name: string; institution: string; balance: number; currency: string }[];
   excludedCurrencyCount: number; syncedAt: string; accountFlows: { fromId: string; fromName: string; toId: string; toName: string; value: number; count: number; currency: string }[];
 };
@@ -100,7 +100,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   for (let timestamp = startDay; timestamp <= endDay; timestamp += 86400000) {
     const date = new Date(timestamp).toISOString().slice(0,10);
     const label = new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(timestamp + 43200000)).replace('.','');
-    buckets.set(date,{label,income:0,expenses:0});
+    buckets.set(date,{date,label,income:0,expenses:0});
   }
   for(const category of categoryNames) for(const bucket of buckets.values()) bucket[category]=0;
   for(const record of included){
@@ -140,7 +140,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
   const recent=[...records].sort((a,b)=>(b.recordDate||'').localeCompare(a.recordDate||'')).map((r,index)=>({
     id:r.id||`record-${index}`,name:r.counterParty||'Movimiento',category:nameOf(r.category,'Sin categoría'),date:r.recordDate||'',amount:valueOf(r.amount),
     currency:typeof r.amount==='object'&&r.amount?.currencyCode?r.amount.currencyCode:currency,type:r.recordType||'expense',
-    accountId:r.accountId||'',accountName:r.accountName||accountById.get(r.accountId||'')?.name||'Cuenta no identificada',
+    accountId:r.accountId||'',accountName:r.accountName||accountById.get(r.accountId||'')?.name||'Cuenta no identificada',isTransfer:Boolean(r.transfer?.transferId),
   }));
   return {month:dates.month,dateFrom:dates.from,dateTo:dates.to,currency,totals:{income,expenses,balance:income-expenses,accounts:accounts.filter(a=>a.currency===currency).reduce((sum,a)=>sum+a.balance,0)},flow:[...buckets.values()],categories,categoryNames,recent,accounts,accountFlows,excludedCurrencyCount:currencyMismatchCount,syncedAt:new Date().toISOString()};
 }

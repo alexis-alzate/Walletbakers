@@ -24,16 +24,16 @@ export function getDemoDashboard(month = '2026-10', range: 'week' | 'month' = 'm
   for(let timestamp=startDay,index=0;timestamp<=endDay;timestamp+=86400000,index++){
     const date=new Date(timestamp), source=bars[index%bars.length];
     const label=new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(timestamp+43200000)).replace('.','');
-    const point: DashboardData['flow'][number] = {label,income:source[0]*10000,expenses:source[1]*10000};
+    const point: DashboardData['flow'][number] = {date:date.toISOString().slice(0,10),label,income:source[0]*10000,expenses:source[1]*10000};
     names.forEach((name,categoryIndex)=>{point[name]=source[categoryIndex+2]*10000;});
     flow.push(point);
   }
   month=from.slice(0,7);
   const recent: DashboardData['recent'] = [
-    {id:'m1',name:'Arriendo',category:'Hogar',date:`${month}-25T08:00:00Z`,amount:-1200000,currency:'COP',type:'expense',accountId:'a1',accountName:'Cuenta principal'},
-    {id:'m2',name:'Pago de nómina',category:'Ingresos',date:`${month}-24T12:00:00Z`,amount:5800000,currency:'COP',type:'income',accountId:'a1',accountName:'Cuenta principal'},
-    {id:'m3',name:'Mercado local',category:'Alimentación',date:`${month}-24T09:00:00Z`,amount:-186400,currency:'COP',type:'expense',accountId:'a2',accountName:'Ahorros'},
-    {id:'m4',name:'Café con Laura',category:'Ocio',date:`${month}-23T15:00:00Z`,amount:-32000,currency:'COP',type:'expense',accountId:'a3',accountName:'Efectivo'},
+    {id:'m1',name:'Arriendo',category:'Hogar',date:`${month}-25T08:00:00Z`,amount:-1200000,currency:'COP',type:'expense',accountId:'a1',accountName:'Cuenta principal',isTransfer:false},
+    {id:'m2',name:'Pago de nómina',category:'Ingresos',date:`${month}-24T12:00:00Z`,amount:5800000,currency:'COP',type:'income',accountId:'a1',accountName:'Cuenta principal',isTransfer:false},
+    {id:'m3',name:'Mercado local',category:'Alimentación',date:`${month}-24T09:00:00Z`,amount:-186400,currency:'COP',type:'expense',accountId:'a2',accountName:'Ahorros',isTransfer:false},
+    {id:'m4',name:'Café con Laura',category:'Ocio',date:`${month}-23T15:00:00Z`,amount:-32000,currency:'COP',type:'expense',accountId:'a3',accountName:'Efectivo',isTransfer:false},
   ];
   return {
     month,dateFrom:from,dateTo:to,currency:'COP',totals:{income:6250000,expenses:3405000,balance:2845000,accounts:12640500},flow,
