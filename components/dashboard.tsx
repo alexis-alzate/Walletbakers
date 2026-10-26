@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Check, ChevronDown, Clock3, Download, List, LogOut, Maximize2, RefreshCw, Search, ShieldCheck, Sparkles, TrendingUp, WalletCards, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, Clock3, Download, List, LogOut, Maximize2, RefreshCw, Search, ShieldCheck, Sparkles, TrendingUp, WalletCards, X } from 'lucide-react';
 import { Sidebar, MobileMenu } from '@/components/sidebar';
 import { CashflowChart, CategoryFlowChart } from '@/components/finance-charts';
 import { AccountFlowChart } from '@/components/account-flow-chart';
@@ -23,11 +23,10 @@ function ExpandedChartModal({kind,data,range,onClose}:{kind:ExpandedChartKind;da
     window.addEventListener('keydown',handleKey);
     return ()=>{document.body.style.overflow=previousOverflow;window.removeEventListener('keydown',handleKey);previousFocus?.focus();};
   },[onClose]);
-  return <div className="chart-lightbox" onMouseDown={(event)=>{if(event.target===event.currentTarget)onClose();}}><section ref={dialogRef} className="chart-lightbox-dialog" role="dialog" aria-modal="true" aria-labelledby="expanded-chart-title" tabIndex={-1}><div className="chart-lightbox-heading"><div><span className="panel-kicker">GRÁFICA AMPLIADA · {periodName(data.month)}</span><h2 id="expanded-chart-title">{title}</h2><p>{kind==='cashflow'?'Compara cuánto dinero entra y cuánto sale':'Compara tus gastos por categoría y periodo'}</p></div><button className="chart-close-button" onClick={onClose} aria-label="Cerrar gráfica ampliada"><X size={19}/></button></div><div className="chart-lightbox-content">{kind==='cashflow'?<CashflowChart data={data} range={range}/>:<CategoryFlowChart data={data} range={range}/>}</div><div className="chart-lightbox-footer"><span>Datos de {data.currency}</span><span>Usa el cursor sobre las barras para ver los valores</span></div></section></div>;
+  return <div className="chart-lightbox" onMouseDown={(event)=>{if(event.target===event.currentTarget)onClose();}}><section ref={dialogRef} className="chart-lightbox-dialog" role="dialog" aria-modal="true" aria-labelledby="expanded-chart-title" tabIndex={-1}><div className="chart-lightbox-heading"><div><span className="panel-kicker">GRÁFICA AMPLIADA · {formatDateRange(data.dateFrom,data.dateTo)}</span><h2 id="expanded-chart-title">{title}</h2><p>{kind==='cashflow'?'Compara cuánto dinero entra y cuánto sale':'Compara tus gastos por categoría y periodo'}</p></div><button className="chart-close-button" onClick={onClose} aria-label="Cerrar gráfica ampliada"><X size={19}/></button></div><div className="chart-lightbox-content">{kind==='cashflow'?<CashflowChart data={data} range={range}/>:<CategoryFlowChart data={data} range={range}/>}</div><div className="chart-lightbox-footer"><span>Datos de {data.currency}</span><span>Usa el cursor sobre las barras para ver los valores</span></div></section></div>;
 }
 const numberFormat = (currency:string) => new Intl.NumberFormat('es-CO',{style:'currency',currency,maximumFractionDigits:0});
-const periodOptions = Array.from({length:8},(_,index)=>{const date=new Date();date.setUTCDate(1);date.setUTCMonth(date.getUTCMonth()-index);return date.toISOString().slice(0,7)});
-function periodName(period:string){return new Intl.DateTimeFormat('es-CO',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(period+'-01T12:00:00Z'));}
+function formatDateRange(from:string,to:string){const format=(date:string)=>new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(date+'T12:00:00Z'));return format(from)+' – '+format(to);}
 function formatDate(date:string){if(!date)return 'Sin fecha';return new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(date));}
 function formatTime(date:string){return new Intl.DateTimeFormat('es-CO',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bogota'}).format(new Date(date));}
 function connectionLabel(status:Connection){return status==='connected'?'Wallet conectado':status==='missing_token'?'Token pendiente':status==='invalid_token'?'Token inválido':status==='initial_sync'?'Sincronización inicial':'Revisar conexión';}
@@ -37,7 +36,9 @@ export function Dashboard({initialData,initialConnection}:Props){
   const [data,setData]=useState(initialData);
   const [connection,setConnection]=useState(initialConnection);
   const [selectedPeriod,setSelectedPeriod]=useState(initialData.month);
-  const [range,setRange]=useState<'week'|'month'>('week');
+  const range:'week'|'month'='month';
+  const [dateFrom,setDateFrom]=useState(initialData.dateFrom);
+  const [dateTo,setDateTo]=useState(initialData.dateTo);
   const [loading,setLoading]=useState(false);
   const [hasLiveData,setHasLiveData]=useState(initialConnection==='connected');
   const [menuOpen,setMenuOpen]=useState(false);
@@ -50,6 +51,8 @@ export function Dashboard({initialData,initialConnection}:Props){
   const connected=connection==='connected';
   const format=numberFormat(data.currency);
   const categoriesTotal=data.categories.reduce((sum,category)=>sum+category.value,0);
+  const invalidDateRange=dateFrom>dateTo;
+  const selectedDateRange=formatDateRange(data.dateFrom,data.dateTo);
   const visibleTransactions=useMemo(()=>{
     const search=query.trim().toLocaleLowerCase('es-CO');
     return data.recent.filter((item)=>{
@@ -75,22 +78,22 @@ export function Dashboard({initialData,initialConnection}:Props){
     setSelectedCategory((current)=>current===name?null:name);setSelectedAccount(null);document.getElementById('activity')?.scrollIntoView({behavior:'smooth',block:'start'});
   }
 
-  async function refresh(period=selectedPeriod,nextRange=range){
+  async function refresh(period=selectedPeriod,nextRange=range,from=dateFrom,to=dateTo){
     setLoading(true);
     try{
-      const response=await fetch('/api/dashboard?period='+encodeURIComponent(period)+'&range='+nextRange,{cache:'no-store'});
+      const response=await fetch('/api/dashboard?period='+encodeURIComponent(period)+'&range='+nextRange+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to),{cache:'no-store'});
       const result=await response.json();
       if(!response.ok){
         if(response.status===401){window.location.assign('/');return;}
         const code=(result.code||'wallet_api_error') as Connection;
         setConnection(code);
-        if(!hasLiveData){setData(getDemoDashboard(period,nextRange));setSelectedPeriod(period);setRange(nextRange);}
+        if(!hasLiveData){setData(getDemoDashboard(period,nextRange,from,to));setSelectedPeriod(from.slice(0,7));}
         return;
       }
-      setData(result as DashboardData);setSelectedPeriod(period);setRange(nextRange);setConnection('connected');setHasLiveData(true);
+      setData(result as DashboardData);setSelectedPeriod(from.slice(0,7));setConnection('connected');setHasLiveData(true);
     }catch{
       setConnection('wallet_api_error');
-      if(!hasLiveData){setData(getDemoDashboard(period,nextRange));setSelectedPeriod(period);setRange(nextRange);}
+      if(!hasLiveData){setData(getDemoDashboard(period,nextRange,from,to));setSelectedPeriod(from.slice(0,7));}
     }finally{setLoading(false);}
   }
 
@@ -103,7 +106,7 @@ export function Dashboard({initialData,initialConnection}:Props){
     const csv='\uFEFF'+rows.map((row)=>row.map((value)=>escape(String(value))).join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');
-    link.href=url;link.download='bolsillo-movimientos-'+selectedPeriod+'.csv';link.click();URL.revokeObjectURL(url);
+    link.href=url;link.download='bolsillo-movimientos-'+dateFrom+'-'+dateTo+'.csv';link.click();URL.revokeObjectURL(url);
   }
 
   async function logout(){
@@ -123,29 +126,29 @@ export function Dashboard({initialData,initialConnection}:Props){
       </header>
       <div className="page-wrap">
         <section className="page-heading">
-          <div><div className="eyebrow"><Sparkles size={13}/> TU RESUMEN FINANCIERO</div><h1>Tu dinero, <em>en perspectiva.</em></h1><p>Una mirada clara a lo que entra, lo que sale y lo que estás construyendo.</p></div>
+          <div><div className="eyebrow"><Sparkles size={13}/> TU RESUMEN FINANCIERO</div><h1>Tu dinero, <em>en perspectiva.</em></h1><p>Elige las fechas y revisa cada día cuánto dinero entró y cuánto salió.</p></div>
           <div className="heading-controls">
-            <label className="period-select"><span className="sr-only">Periodo</span><span className="calendar-icon">▦</span><select value={selectedPeriod} onChange={(event)=>refresh(event.target.value)}>{periodOptions.map((period)=><option key={period} value={period}>{periodName(period)}</option>)}</select><ChevronDown size={15}/></label>
-            <button className="refresh-button" onClick={()=>refresh()} disabled={loading} aria-label="Actualizar datos"><RefreshCw size={15} className={loading?'spin':''}/><span>{loading?'Actualizando':'Actualizar'}</span></button>
+            <div className="date-range-controls"><label className="date-filter-field"><span>Desde</span><input type="date" value={dateFrom} max={dateTo} onChange={(event)=>setDateFrom(event.target.value)} /></label><label className="date-filter-field"><span>Hasta</span><input type="date" value={dateTo} min={dateFrom} onChange={(event)=>setDateTo(event.target.value)} /></label><button className="refresh-button apply-date-button" onClick={()=>refresh(dateFrom.slice(0,7),'month',dateFrom,dateTo)} disabled={loading||invalidDateRange} aria-label="Aplicar rango de fechas"><RefreshCw size={15} className={loading?'spin':''}/><span>{loading?'Actualizando':'Aplicar fechas'}</span></button></div>
+            {invalidDateRange&&<span className="date-range-error" role="alert">La fecha inicial debe ser anterior a la fecha final.</span>}
           </div>
         </section>
         {!connected&&<div className={'notice '+(connection==='missing_token'?'notice-info':'notice-warning')} role="status"><span className="notice-icon">{connection==='missing_token'?'i':'!'}</span><span><b>{connection==='missing_token'?'Viendo datos de muestra':connectionLabel(connection)}</b><small>{statusMessage(connection)}</small></span><button onClick={()=>refresh()} disabled={loading}>Reintentar</button></div>}
-        <section className="metric-grid" aria-label={"Resumen de " + periodName(data.month)}>
+        <section className="metric-grid" aria-label={"Resumen del " + selectedDateRange}>
           <article className="metric-card balance-card"><div className="metric-header"><span>Balance del periodo</span><span className="metric-icon"><TrendingUp size={16}/></span></div><strong>{format.format(data.totals.balance)}</strong><div className="metric-footer"><span className="trend-positive"><ArrowUpRight size={14}/> Neto</span><span>ingresos menos gastos</span></div></article>
-          <article className="metric-card"><div className="metric-header"><span>Ingresos</span><span className="metric-icon green-icon"><ArrowUpRight size={16}/></span></div><strong>{format.format(data.totals.income)}</strong><div className="metric-footer"><span className="metric-caption">Total recibido</span></div><div className="metric-track"><span className="track-green" style={{width:(data.totals.income?100:0)+'%'}}/></div><div className="metric-note">{data.currency} · {periodName(data.month)}</div></article>
+          <article className="metric-card"><div className="metric-header"><span>Ingresos</span><span className="metric-icon green-icon"><ArrowUpRight size={16}/></span></div><strong>{format.format(data.totals.income)}</strong><div className="metric-footer"><span className="metric-caption">Total recibido</span></div><div className="metric-track"><span className="track-green" style={{width:(data.totals.income?100:0)+'%'}}/></div><div className="metric-note">{data.currency} · {selectedDateRange}</div></article>
           <article className="metric-card"><div className="metric-header"><span>Gastos</span><span className="metric-icon orange-icon"><ArrowUpRight size={16}/></span></div><strong>{format.format(data.totals.expenses)}</strong><div className="metric-footer"><span className="metric-caption">Total gastado</span><span className="spend-ratio">{data.totals.income?Math.round(data.totals.expenses/data.totals.income*100):0}% de ingresos</span></div><div className="metric-track"><span className="track-orange" style={{width:(data.totals.income?Math.min(data.totals.expenses/data.totals.income*100,100):0)+'%'}}/></div><div className="metric-note">En moneda base · {data.currency}</div></article>
           <article className="metric-card"><div className="metric-header"><span>Disponible en cuentas</span><span className="metric-icon blue-icon"><WalletCards size={16}/></span></div><strong>{format.format(data.totals.accounts)}</strong><div className="metric-footer"><span className="trend-neutral"><Check size={13}/> {data.accounts.length} cuentas</span><span>en {data.currency}</span></div><div className="account-summary-line"><span>{data.accounts.length} cuentas conectadas</span><span>{data.excludedCurrencyCount?data.excludedCurrencyCount+' mov. en otra moneda':'Todas sincronizadas'}</span></div></article>
         </section>
         <section className="chart-grid">
           <article className="panel cashflow-panel" id="cashflow">
-            <div className="panel-heading"><div><span className="panel-kicker">TENDENCIA</span><h2>Ingresos y gastos</h2><p>Ingresos y gastos {range==='week'?'en los últimos 7 días':'a lo largo del mes'}</p></div>
-              <div className="chart-actions"><button className="chart-expand-button" onClick={()=>setExpandedChart('cashflow')} aria-label="Ampliar gráfica de flujo de caja" title="Ampliar gráfica"><Maximize2 size={15}/><span>Ampliar</span></button><div className="segmented-control"><button className={range==='week'?'active':''} onClick={()=>refresh(selectedPeriod,'week')}>Semana</button><button className={range==='month'?'active':''} onClick={()=>refresh(selectedPeriod,'month')}>Mes</button></div></div>
+            <div className="panel-heading"><div><span className="panel-kicker">TENDENCIA</span><h2>Ingresos y gastos</h2><p>Una barra por día · {selectedDateRange}</p></div>
+              <div className="chart-actions"><button className="chart-expand-button" onClick={()=>setExpandedChart('cashflow')} aria-label="Ampliar gráfica de flujo de caja" title="Ampliar gráfica"><Maximize2 size={15}/><span>Ampliar</span></button></div>
             </div>
             <CashflowChart data={data} range={range}/>
             <div className="panel-bottom"><span><i className="legend-dot green-dot"/> {connected?'Datos de Wallet':'Ejemplo visual'} <b>{data.currency}</b></span><span className="bottom-meta"><Clock3 size={12}/> {connected?'Consulta '+formatTime(data.syncedAt):'Vista previa'}</span></div>
           </article>
           <article className="panel category-panel" id="categories">
-            <div className="panel-heading"><div><span className="panel-kicker">A DÓNDE VA</span><h2>Gastos por categoría</h2><p>Cuánto gastaste en cada categoría · {periodName(data.month)}</p></div><button className="chart-expand-button" onClick={()=>setExpandedChart('categories')} aria-label="Ampliar gráfica de gastos por categoría" title="Ampliar gráfica"><Maximize2 size={15}/><span>Ampliar</span></button></div>
+            <div className="panel-heading"><div><span className="panel-kicker">A DÓNDE VA</span><h2>Gastos por categoría</h2><p>Por día · {selectedDateRange}</p></div><button className="chart-expand-button" onClick={()=>setExpandedChart('categories')} aria-label="Ampliar gráfica de gastos por categoría" title="Ampliar gráfica"><Maximize2 size={15}/><span>Ampliar</span></button></div>
             <div className="category-total"><strong>{format.format(data.totals.expenses)}</strong><span>total de gastos</span><span className="category-period">{data.currency}</span></div>
             <CategoryFlowChart data={data} range={range}/>
             <div className="category-legend">{data.categories.slice(0,4).map((category)=><span key={category.name}><i style={{background:category.color}}/>{category.name}</span>)}</div>
@@ -156,7 +159,7 @@ export function Dashboard({initialData,initialConnection}:Props){
         <AccountFlowChart flows={data.accountFlows} currency={data.currency} onAccountSelect={filterByAccount}/>
         <section className="lower-grid">
           <article className="panel activity-panel" id="activity">
-            <div className="panel-heading"><div><span className="panel-kicker">ACTIVIDAD</span><h2>Movimientos del periodo</h2><p>{visibleTransactions.length} de {data.recent.length} movimientos · {periodName(data.month)}</p>{(selectedAccount||selectedCategory)&&<button className="filter-chip" onClick={()=>{setSelectedAccount(null);setSelectedCategory(null);}}>Filtro: {selectedAccount?.name||selectedCategory} <span>×</span></button>}</div>
+            <div className="panel-heading"><div><span className="panel-kicker">ACTIVIDAD</span><h2>Movimientos del periodo</h2><p>{visibleTransactions.length} de {data.recent.length} movimientos · {selectedDateRange}</p>{(selectedAccount||selectedCategory)&&<button className="filter-chip" onClick={()=>{setSelectedAccount(null);setSelectedCategory(null);}}>Filtro: {selectedAccount?.name||selectedCategory} <span>×</span></button>}</div>
               <div className="activity-actions"><button className="csv-button" onClick={exportTransactions} disabled={!visibleTransactions.length}><Download size={14}/><span>Exportar CSV</span></button></div>
             </div>
             <label className="transaction-search"><Search size={14}/><input aria-label="Buscar movimientos" placeholder="Buscar por nombre, categoría o fecha" value={query} onChange={(event)=>setQuery(event.target.value)}/>{query&&<button type="button" aria-label="Limpiar búsqueda" onClick={()=>setQuery('')}>Limpiar</button>}</label>

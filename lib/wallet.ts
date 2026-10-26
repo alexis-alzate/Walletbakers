@@ -2,7 +2,7 @@ import 'server-only';
 
 export type FlowPoint = { label: string; income: number; expenses: number; [key: string]: number | string };
 export type DashboardData = {
-  month: string; currency: string;
+  month: string; dateFrom: string; dateTo: string; currency: string;
   totals: { income: number; expenses: number; balance: number; accounts: number };
   flow: FlowPoint[];
   categories: { name: string; value: number; color: string }[];
@@ -40,10 +40,19 @@ async function walletGet<T>(path: string, params: URLSearchParams): Promise<T> {
   if (!response.ok) throw new WalletApiError(body.message || body.error || `Wallet respondió ${response.status}.`,response.status,response.status===409?'initial_sync':response.status===401?'invalid_token':'wallet_api_error');
   return body as T;
 }
-function periodDates(period?: string) {
-  const month = period && /^\d{4}-(0[1-9]|1[0-2])$/.test(period) ? period : new Date().toISOString().slice(0,7);
-  const [year, monthNumber] = month.split('-').map(Number);
-  return { month, from: `${month}-01`, to: new Date(Date.UTC(year,monthNumber,1)).toISOString().slice(0,10) };
+function periodDates(period?: string, fromDate?: string, toDate?: string) {
+  const requestedMonth = period && /^\d{4}-(0[1-9]|1[0-2])$/.test(period) ? period : new Date().toISOString().slice(0,7);
+  const [year, monthNumber] = requestedMonth.split('-').map(Number);
+  const monthStart = requestedMonth + '-01';
+  const monthEnd = new Date(Date.UTC(year,monthNumber,0)).toISOString().slice(0,10);
+  const today = new Date().toISOString().slice(0,10);
+  const defaultEnd = requestedMonth === today.slice(0,7) ? today : monthEnd;
+  const validDate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')) && new Date(value + 'T00:00:00Z').toISOString().slice(0,10) === value);
+  const from = validDate(fromDate) ? fromDate! : monthStart;
+  const to = validDate(toDate) ? toDate! : defaultEnd;
+  if (from > to) throw new WalletApiError('La fecha Desde debe ser anterior o igual a la fecha Hasta.',400,'invalid_date_range');
+  const toExclusive = new Date(Date.parse(to + 'T00:00:00Z') + 86400000).toISOString().slice(0,10);
+  return { month: from.slice(0,7), from, to, toExclusive };
 }
 async function getRecords(from: string, to: string) {
   const rows: WalletRecord[] = []; let offset: number | undefined = 0;
@@ -57,10 +66,11 @@ async function getRecords(from: string, to: string) {
   return rows;
 }
 
-export async function getWalletDashboard(period?: string, range: 'week' | 'month' = 'week'): Promise<DashboardData> {
-  const dates = periodDates(period);
+export async function getWalletDashboard(period?: string, range: 'week' | 'month' = 'month', fromDate?: string, toDate?: string): Promise<DashboardData> {
+  void range;
+  const dates = periodDates(period,fromDate,toDate);
   const [records, accountPage] = await Promise.all([
-    getRecords(dates.from,dates.to), walletGet<Page<WalletAccount>>('accounts',new URLSearchParams({limit:'200'})),
+    getRecords(dates.from,dates.toExclusive), walletGet<Page<WalletAccount>>('accounts',new URLSearchParams({limit:'200'})),
   ]);
   const currency = baseCurrency();
   const currencyMismatchCount = records.filter((r) => {
@@ -85,22 +95,17 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
     .map(([name,value],index)=>({name,value,color:COLORS[index%COLORS.length]}));
   const categoryNames = categories.map((item)=>item.name);
   const buckets = new Map<string,FlowPoint>();
-  const [year,monthNumber] = dates.month.split('-').map(Number);
-  const lastDay = new Date(Date.UTC(year,monthNumber,0)).getUTCDate();
-  if (range === 'week') {
-    const today = new Date(), current = today.getUTCFullYear()===year && today.getUTCMonth()+1===monthNumber;
-    const last = current ? today.getUTCDate() : lastDay;
-    for(let day=Math.max(1,last-6);day<=last;day++){
-      const date=`${dates.month}-${String(day).padStart(2,'0')}`;
-      buckets.set(date,{label:new Intl.DateTimeFormat('es-CO',{weekday:'short',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`)).replace('.',''),income:0,expenses:0});
-    }
-  } else {
-    for(let week=1;week<=Math.ceil(lastDay/7);week++) buckets.set(`week-${week}`,{label:`Sem ${week}`,income:0,expenses:0});
+  const startDay = Date.parse(dates.from + 'T00:00:00Z');
+  const endDay = Date.parse(dates.to + 'T00:00:00Z');
+  for (let timestamp = startDay; timestamp <= endDay; timestamp += 86400000) {
+    const date = new Date(timestamp).toISOString().slice(0,10);
+    const label = new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(timestamp + 43200000)).replace('.','');
+    buckets.set(date,{label,income:0,expenses:0});
   }
   for(const category of categoryNames) for(const bucket of buckets.values()) bucket[category]=0;
   for(const record of included){
     if(!record.recordDate) continue;
-    const date=record.recordDate.slice(0,10), key=range==='week'?date:`week-${Math.floor((Number(date.slice(8,10))-1)/7)+1}`;
+    const date=record.recordDate.slice(0,10), key=date;
     const bucket=buckets.get(key); if(!bucket) continue;
     const amount=valueOf(record.amount), type=record.recordType?.toLowerCase();
     if(type==='income'||(type!=='expense'&&amount>0)) bucket.income+=Math.abs(amount);
@@ -137,7 +142,7 @@ export async function getWalletDashboard(period?: string, range: 'week' | 'month
     currency:typeof r.amount==='object'&&r.amount?.currencyCode?r.amount.currencyCode:currency,type:r.recordType||'expense',
     accountId:r.accountId||'',accountName:r.accountName||accountById.get(r.accountId||'')?.name||'Cuenta no identificada',
   }));
-  return {month:dates.month,currency,totals:{income,expenses,balance:income-expenses,accounts:accounts.filter(a=>a.currency===currency).reduce((sum,a)=>sum+a.balance,0)},flow:[...buckets.values()],categories,categoryNames,recent,accounts,accountFlows,excludedCurrencyCount:currencyMismatchCount,syncedAt:new Date().toISOString()};
+  return {month:dates.month,dateFrom:dates.from,dateTo:dates.to,currency,totals:{income,expenses,balance:income-expenses,accounts:accounts.filter(a=>a.currency===currency).reduce((sum,a)=>sum+a.balance,0)},flow:[...buckets.values()],categories,categoryNames,recent,accounts,accountFlows,excludedCurrencyCount:currencyMismatchCount,syncedAt:new Date().toISOString()};
 }
 
 
